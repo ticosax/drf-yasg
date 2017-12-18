@@ -2,7 +2,7 @@ from collections import OrderedDict
 
 from django.core.validators import RegexValidator
 from django.utils.encoding import force_text
-from rest_framework import serializers
+from rest_framework import serializers, status
 from rest_framework.mixins import RetrieveModelMixin, DestroyModelMixin, UpdateModelMixin
 from rest_framework.settings import api_settings
 
@@ -46,8 +46,17 @@ def is_list_view(path, method, view):
     return True
 
 
+def guess_response_status(method):
+    if method == 'post':
+        return status.HTTP_201_CREATED
+    elif method == 'delete':
+        return status.HTTP_204_NO_CONTENT
+    else:
+        return status.HTTP_200_OK
+
+
 def swagger_auto_schema(method=None, methods=None, auto_schema=None, request_body=None, query_serializer=None,
-                        manual_parameters=None, operation_description=None, responses=None):
+                        manual_parameters=None, operation_description=None, responses=None, **extra_overrides):
     """Decorate a view method to customize the :class:`.Operation` object generated from it.
 
     `method` and `methods` are mutually exclusive and must only be present when decorating a view method that accepts
@@ -97,7 +106,8 @@ def swagger_auto_schema(method=None, methods=None, auto_schema=None, request_bod
         * a ``Serializer`` class or instance will be converted into a :class:`.Schema` and treated as above
         * a :class:`.Response` object will be used as-is; however if its ``schema`` attribute is a ``Serializer``,
           it will automatically be converted into a :class:`.Schema`
-
+    :param extra_overrides: extra values that will be saved into the ``overrides`` dict; these values will be available
+        in the handling :class:`.SwaggerAutoSchema` instance via ``self.overrides``
     """
 
     def decorator(view_method):
@@ -110,6 +120,7 @@ def swagger_auto_schema(method=None, methods=None, auto_schema=None, request_bod
             'responses': responses,
         }
         data = {k: v for k, v in data.items() if v is not None}
+        data.update(extra_overrides)
 
         # if the method is a detail_route or list_route, it will have a bind_to_methods attribute
         bind_to_methods = getattr(view_method, 'bind_to_methods', [])

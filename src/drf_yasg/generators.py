@@ -4,6 +4,7 @@ from collections import defaultdict, OrderedDict
 import django.db.models
 import uritemplate
 from coreapi.compat import force_text
+from rest_framework import versioning
 from rest_framework.schemas.generators import SchemaGenerator, EndpointEnumerator as _EndpointEnumerator
 from rest_framework.schemas.inspectors import get_pk_description
 
@@ -72,7 +73,7 @@ class OpenAPISchemaGenerator(object):
         self.info = info
         self.version = version
 
-    def get_schema(self, request=None, public=False):
+    def get_schema(self, request, public=False):
         """Generate an :class:`.Swagger` representing the API schema.
 
         :param rest_framework.request.Request request: the request used for filtering
@@ -83,8 +84,9 @@ class OpenAPISchemaGenerator(object):
         :rtype: openapi.Swagger
         """
         endpoints = self.get_endpoints(None if public else request)
+        endpoints = self.replace_version(endpoints, request)
         components = ReferenceResolver(openapi.SCHEMA_DEFINITIONS)
-        paths = self.get_paths(endpoints, components)
+        paths = self.get_paths(endpoints, components, request)
 
         url = self._gen.url
         if not url and request is not None:
@@ -112,6 +114,30 @@ class OpenAPISchemaGenerator(object):
                 if view_method is not None:  # pragma: no cover
                     setattr(view_method.__func__, 'swagger_auto_schema', overrides)
         return view
+
+    def replace_version(self, endpoints, request):
+        """If ``request.version`` is not ``None``, replace the version parameter in the path of any endpoints using
+        ``URLPathVersioning`` as a versioning class.
+
+        :param dict endpoints: endpoints as returned by :meth:`.get_endpoints`
+        :param Request request: the request made against the schema view
+        :return: endpoints with modified paths
+        """
+        version = getattr(request, 'version', None)
+        if version is None:
+            return endpoints
+
+        new_endpoints = {}
+        for path, endpoint in endpoints.items():
+            view_cls = endpoint[0]
+            versioning_class = getattr(view_cls, 'versioning_class', None)
+            version_param = getattr(versioning_class, 'version_param', 'version')
+            if versioning_class is not None and issubclass(versioning_class, versioning.URLPathVersioning):
+                path = path.replace('{%s}' % version_param, version)
+
+            new_endpoints[path] = endpoint
+
+        return new_endpoints
 
     def get_endpoints(self, request=None):
         """Iterate over all the registered endpoints in the API.
@@ -151,11 +177,12 @@ class OpenAPISchemaGenerator(object):
         """
         return self._gen.get_keys(subpath, method, view)
 
-    def get_paths(self, endpoints, components):
+    def get_paths(self, endpoints, components, request=None):
         """Generate the Swagger Paths for the API from the given endpoints.
 
         :param dict endpoints: endpoints as returned by get_endpoints
         :param ReferenceResolver components: resolver/container for Swagger References
+        :param Request request: the request made against the schema view; can be None
         :rtype: openapi.Paths
         """
         if not endpoints:
@@ -175,7 +202,7 @@ class OpenAPISchemaGenerator(object):
                 operation_keys = self.get_operation_keys(path[len(prefix):], method, view)
                 overrides = self.get_overrides(view, method)
                 auto_schema_cls = overrides.get('auto_schema', default_schema_cls)
-                schema = auto_schema_cls(view, path, method, overrides, components)
+                schema = auto_schema_cls(view, path, method, overrides, components, request)
                 operations[method.lower()] = schema.get_operation(operation_keys)
 
             if operations:

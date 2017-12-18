@@ -3,7 +3,7 @@ import logging
 from collections import OrderedDict
 
 import coreschema
-from rest_framework import serializers, status
+from rest_framework import serializers
 from rest_framework.pagination import CursorPagination, PageNumberPagination, LimitOffsetPagination
 from rest_framework.request import is_form_media_type
 from rest_framework.schemas import AutoSchema
@@ -12,7 +12,7 @@ from rest_framework.viewsets import GenericViewSet
 
 from . import openapi
 from .errors import SwaggerGenerationError
-from .utils import serializer_field_to_swagger, no_body, is_list_view, param_list_to_odict
+from .utils import serializer_field_to_swagger, no_body, is_list_view, param_list_to_odict, guess_response_status
 
 logger = logging.getLogger(__name__)
 
@@ -34,18 +34,20 @@ def force_serializer_instance(serializer):
 
 
 class BaseInspector(object):
-    def __init__(self, view, path, method, components):
+    def __init__(self, view, path, method, components, request=None):
         """Base inspector
 
         :param view: the view associated with this endpoint
         :param str path: the path component of the operation URL
         :param str method: the http method of the operation
         :param openapi.ReferenceResolver components: referenceable components
+        :param Request request: the request made against the schema view; can be None
         """
         self.view = view
         self.path = path
         self.method = method
         self.components = components
+        self.request = request
 
     def probe_inspectors(self, inspectors, method_name, obj, **kwargs):
         """Probe a list of inspectors with a given object. The first inspector in the list to return a value that
@@ -62,7 +64,7 @@ class BaseInspector(object):
             assert inspect.isclass(inspector), "inspector must be a class, not an object"
             assert issubclass(inspector, BaseInspector), "inspector must subclass of BaseInspector"
 
-            inspector = inspector(self.view, self.path, self.method, self.components)
+            inspector = inspector(self.view, self.path, self.method, self.components, self.request)
             method = getattr(inspector, method_name)
             result = method(obj, **kwargs)
             if result is not None:
@@ -93,7 +95,7 @@ class SerializerInspector(BaseInspector):
         :param serializers.BaseSerializer serializer: the ``Serializer`` instance
         :rtype: openapi.Schema
         """
-        return None
+        return None  # pragma: no cover
 
     def get_request_parameters(self, serializer, in_):
         """Convert a DRF serializer into a list of :class:`.Parameter`\ s.
@@ -104,7 +106,7 @@ class SerializerInspector(BaseInspector):
         :param str in_: the location of the parameters, one of the `openapi.IN_*` constants
         :rtype: list[openapi.Parameter]
         """
-        return None
+        return None  # pragma: no cover
 
 
 class InlineSerializerInspector(SerializerInspector):
@@ -137,7 +139,7 @@ class PaginatorInspector(BaseInspector):
         :param BasePagination paginator: the paginator
         :rtype: list[openapi.Parameter]
         """
-        return None
+        return None  # pragma: no cover
 
     def get_paginated_response(self, paginator, response_schema):
         """Add appropriate paging fields to a response :class:`.Schema`.
@@ -148,7 +150,7 @@ class PaginatorInspector(BaseInspector):
         :param openapi.Schema response_schema: the response schema that must be paged.
         :rtype: openapi.Schema
         """
-        return None
+        return None  # pragma: no cover
 
 
 class FilterInspector(BaseInspector):
@@ -160,13 +162,14 @@ class FilterInspector(BaseInspector):
         :param BaseFilterBackend filter_backend: the filter backend
         :rtype: list[openapi.Parameter]
         """
-        return None
+        return None  # pragma: no cover
 
 
 class CoreAPICompatInspector(PaginatorInspector, FilterInspector):
     """Converts ``coreapi.Field``\ s to :class:`.openapi.Parameter`\ s for filters and paginators that implement a
     ``get_schema_fields`` method.
     """
+
     def get_paginator_parameters(self, paginator):
         fields = []
         if hasattr(paginator, 'get_schema_fields'):
@@ -211,6 +214,7 @@ class DjangoRestResponsePagination(PaginatorInspector):
     """Provides response schema pagination warpping for django-rest-framework's LimitOffsetPagination,
     PageNumberPagination and CursorPagination
     """
+
     def get_paginated_response(self, paginator, response_schema):
         assert response_schema.type == openapi.TYPE_ARRAY, "array return expected for paged response"
         paged_schema = None
@@ -238,12 +242,12 @@ class SwaggerAutoSchema(ViewInspector):
     filter_inspectors = [CoreAPICompatInspector]  #:
     paginator_inspectors = [DjangoRestResponsePagination, CoreAPICompatInspector]  #:
 
-    def __init__(self, view, path, method, overrides, components):
+    def __init__(self, view, path, method, overrides, components, request):
         """Inspector class responsible for providing :class:`.Operation` definitions given a view, path and method.
 
         :param dict overrides: manual overrides as passed to :func:`@swagger_auto_schema <.swagger_auto_schema>`
         """
-        super(SwaggerAutoSchema, self).__init__(view, path, method, components)
+        super(SwaggerAutoSchema, self).__init__(view, path, method, components, request)
         self.overrides = overrides
         self._sch = AutoSchema()
         self._sch.view = view
@@ -390,13 +394,10 @@ class SwaggerAutoSchema(ViewInspector):
         """
         method = self.method.lower()
 
-        default_status = status.HTTP_200_OK
+        default_status = guess_response_status(method)
         default_schema = ''
         if method == 'post':
-            default_status = status.HTTP_201_CREATED
             default_schema = self.get_request_serializer() or self.get_view_serializer()
-        elif method == 'delete':
-            default_status = status.HTTP_204_NO_CONTENT
         elif method in ('get', 'put', 'patch'):
             default_schema = self.get_request_serializer() or self.get_view_serializer()
 
