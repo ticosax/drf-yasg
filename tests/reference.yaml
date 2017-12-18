@@ -454,6 +454,75 @@ paths:
         in: path
         required: true
         type: string
+  /versioned/v{version}/snippets/:
+    get:
+      operationId: versioned_snippets_list
+      description: "List all snippets, or create a new snippet.\n\n**Response Description:**\n\
+        \nChangelog:\n\n* **v1.0**: `title` is optional\n* **v2.0**: `title` is required\n"
+      parameters: []
+      responses:
+        '200':
+          description: ''
+          schema:
+            required:
+              - v1field
+            type: object
+            properties:
+              title:
+                type: string
+              v1field:
+                description: field on V1 serializer
+                type: integer
+        '400':
+          description: Bad Request
+      consumes:
+        - application/json
+      tags:
+        - versioned
+    post:
+      operationId: versioned_snippets_create
+      description: "List all snippets, or create a new snippet.\n\n**Request Description:**\n\
+        \nChangelog:\n\n* **v1.0**: `title` is optional\n* **v2.0**: `title` is required\n\
+        \n\n**Response Description:**\n\nChangelog:\n\n* **v1.0**: `title` is optional\n\
+        * **v2.0**: `title` is required\n"
+      parameters:
+        - name: data
+          in: body
+          required: true
+          schema:
+            required:
+              - v1field
+            type: object
+            properties:
+              title:
+                type: string
+              v1field:
+                description: field on V1 serializer
+                type: integer
+      responses:
+        '200':
+          description: ''
+          schema:
+            required:
+              - v1field
+            type: object
+            properties:
+              title:
+                type: string
+              v1field:
+                description: field on V1 serializer
+                type: integer
+        '400':
+          description: Bad Request
+      consumes:
+        - application/json
+      tags:
+        - versioned
+    parameters:
+      - name: version
+        in: path
+        required: true
+        type: string
 definitions:
   Article:
     required:

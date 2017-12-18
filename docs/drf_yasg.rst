@@ -18,6 +18,15 @@ drf\_yasg\.codecs
     :show-inheritance:
     :exclude-members: SaneYamlDumper,SaneYamlLoader
 
+drf\_yasg\.drf_openapi_shim
+---------------------------
+
+.. automodule:: drf_yasg.drf_openapi_shim
+    :members:
+    :undoc-members:
+    :show-inheritance:
+    :exclude-members: _append_openapi_description,_add_meta_responses
+
 drf\_yasg\.errors
 ---------------------------
 

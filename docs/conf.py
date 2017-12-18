@@ -199,6 +199,7 @@ nitpick_ignore = [
     ('py:obj', 'Serializer'),
     ('py:obj', 'BaseSerializer'),
     ('py:obj', 'APIView'),
+    ('py:obj', 'VersionedSerializers'),
 ]
 
 # even though the package should be already installed, the sphinx build on RTD

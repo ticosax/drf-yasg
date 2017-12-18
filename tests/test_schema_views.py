@@ -72,4 +72,4 @@ def test_caching(client, validate_schema):
 def test_non_public(client):
     response = client.get('/private/swagger.yaml')
     swagger = yaml_sane_load(response.content.decode('utf-8'))
-    assert len(swagger['paths']) == 0
+    assert len(swagger['paths']) == 1 and '/versioned/v{version}/snippets/' in swagger['paths']
